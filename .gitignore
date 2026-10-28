@@ -9,3 +9,13 @@ __pycache__/
 node_modules/
 dist/
 build/
+uvicorn.log
+testdoc.txt
+
+# Frontend generated files
+frontend/node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+
+# Local development logs
+vite.log
