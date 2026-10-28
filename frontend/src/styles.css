@@ -124,6 +124,20 @@ body {
   color: #b91c1c;
 }
 
+.markdown p {
+  margin: 0 0 0.5em;
+}
+
+.markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown ul,
+.markdown ol {
+  margin: 0.25em 0 0.5em;
+  padding-left: 1.4em;
+}
+
 .loading-bubble {
   color: var(--muted);
 }

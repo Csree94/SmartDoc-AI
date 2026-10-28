@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { askQuestion, uploadDocument } from "./api";
 import type { ChatMessage } from "./types";
 
@@ -139,7 +140,13 @@ export default function App() {
           ) : (
             <div key={i} className="message assistant">
               <div className="bubble">
-                {m.error ? <span className="error-text">⚠ {m.error}</span> : m.content}
+                {m.error ? (
+                  <span className="error-text">⚠ {m.error}</span>
+                ) : (
+                  <div className="markdown">
+                    <ReactMarkdown>{m.content}</ReactMarkdown>
+                  </div>
+                )}
                 {!m.error && (
                   <SourceBadges
                     docSources={m.docSources}
