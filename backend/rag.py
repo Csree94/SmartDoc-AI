@@ -1,6 +1,7 @@
 from google import genai
 from google.genai import types as gtypes
-from .config import GEMINI_API_KEY, EMBED_MODEL, EMBED_DIM, GEN_MODEL, CHUNK_SIZE, CHUNK_OVERLAP
+import time
+from .config import GEMINI_API_KEY, EMBED_MODEL, EMBED_DIM, GEN_MODELS, CHUNK_SIZE, CHUNK_OVERLAP
 
 _client = genai.Client(api_key=GEMINI_API_KEY)  # type: ignore[arg-type]
 
@@ -102,14 +103,31 @@ def generate_answer(question: str, doc_context: str, web_context: str) -> str:
     parts.append(
         "Answer the question using the available evidence. Cite sources as instructed."
     )
-    response = _client.models.generate_content(
-        model=GEN_MODEL,
-        contents="\n\n".join(parts),
-        config=gtypes.GenerateContentConfig(
-            system_instruction=SYSTEM_INSTRUCTIONS,
-            temperature=0.2,
-        ),
+    contents = "\n\n".join(parts)
+
+    import time
+    from google.genai import errors as gerrors
+
+    last_exc: Exception | None = None
+    for model in GEN_MODELS:  # fall back to the next model if one is overloaded
+        try:
+            response = _client.models.generate_content(
+                model=model,
+                contents=contents,
+                config=gtypes.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTIONS,
+                    temperature=0.2,
+                ),
+            )
+            if not response.text:
+                raise RuntimeError("Gemini returned an empty answer")
+            return response.text
+        except gerrors.APIError as exc:
+            last_exc = exc
+            print(f"[SmartDoc] model {model} failed: {str(exc)[:120]} - trying next")
+            time.sleep(1)
+        except RuntimeError:
+            print(f"[SmartDoc] model {model} returned empty content - trying next")
+    raise RuntimeError(
+        f"All Gemini models failed. The service may be overloaded right now; try again in a moment. Last error: {last_exc}"
     )
-    if not response.text:
-        raise RuntimeError("Gemini returned an empty answer")
-    return response.text

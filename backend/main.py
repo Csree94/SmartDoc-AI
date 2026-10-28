@@ -99,7 +99,7 @@ def _index_document(filename: str, pages: list[tuple[int, str]]) -> int:
             insert_rows = [
                 (p[0], p[1], p[2], e) for p, e in zip(part, embeddings)
             ]
-            db.conn.executemany(
+            db.conn.cursor().executemany(
                 "INSERT INTO chunks (document_id, page_no, content, embedding) VALUES (%s, %s, %s, %s)",
                 insert_rows,
             )
@@ -187,10 +187,29 @@ def _answer_question(question: str):
 
 def _web_search(question: str) -> tuple[list[dict], str]:
     from ddgs import DDGS
+    from ddgs.exceptions import DDGSException
+    import time
 
-    results = DDGS().text(question, max_results=5)
-    sources = [{"title": r["title"], "url": r["href"]} for r in results]
-    context_lines = [
-        f"[Web: {r['title']}]\n{r['body']}" for r in results
-    ]
-    return sources, "\n\n".join(context_lines)
+    # DuckDuckGo is sometimes flaky: retry a few times, filter bad rows
+    for attempt in range(3):
+        try:
+            results = DDGS(timeout=10).text(question, max_results=5)
+        except (DDGSException, Exception) as exc:  # "No results found" also raises
+            print(f"[SmartDoc] web search attempt {attempt + 1} failed: {exc}")
+            if attempt == 2:
+                return [], ""
+            time.sleep(1)
+            continue
+        clean = [
+            r for r in results
+            if r.get("title") and r.get("href") and r.get("body")
+        ]
+        if clean:
+            sources = [{"title": r["title"], "url": r["href"]} for r in clean]
+            context_lines = [
+                f"[Web: {r['title']}]\n{r['body']}" for r in clean
+            ]
+            return sources, "\n\n".join(context_lines)
+        print(f"[SmartDoc] web search attempt {attempt + 1}: only malformed results, retrying")
+        time.sleep(1)
+    return [], ""

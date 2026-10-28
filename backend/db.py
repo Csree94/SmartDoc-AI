@@ -3,8 +3,6 @@ from psycopg.rows import dict_row
 from pgvector.psycopg import register_vector
 from .config import DATABASE_URL, EMBED_DIM
 
-_initialized = False
-
 
 class Db:
     def __init__(self, conn):
@@ -18,19 +16,38 @@ class Db:
 
 
 def get_db() -> Db:
-    """Open a fresh connection (simple and reliable under exam load)."""
+    """Open a fresh connection with pgvector types registered."""
     conn = psycopg.connect(DATABASE_URL, autocommit=True, row_factory=dict_row)
-    register_vector(conn)
+    try:
+        register_vector(conn)
+    except psycopg.ProgrammingError as exc:
+        conn.close()
+        raise RuntimeError(
+            "The pgvector extension is not installed on this database. "
+            "Run init_db() first (it executes CREATE EXTENSION vector). "
+            "If that fails, your Postgres host does not support pgvector."
+        ) from exc
     return Db(conn)
 
 
-db_state = {"pool_ok": False}
-
-
 def init_db() -> None:
-    """Create pgvector extension and tables if they don't exist."""
+    """Create the pgvector extension and tables if they don't exist."""
+    # Use a plain connection first: the `vector` type is only available
+    # AFTER the extension is created, so register_vector must come later.
+    conn = psycopg.connect(DATABASE_URL, autocommit=True, row_factory=dict_row)
+    try:
+        conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    except psycopg.Error as exc:
+        conn.close()
+        raise RuntimeError(
+            f"Could not create the pgvector extension on this database: {exc}"
+        ) from exc
+    finally:
+        # close only after successful connect; re-open a fresh one for DDL
+        pass
+    conn.close()
+
     with get_db() as db:
-        db.conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
         db.conn.execute(
             """
             CREATE TABLE IF NOT EXISTS documents (
